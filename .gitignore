@@ -47,7 +47,7 @@ loras_i2v/
 settings/
 !shared/deepy/settings/
 !shared/deepy/settings/**
-
+.venv/
 wgp_config.json
 plugins_local.json
 loras_url_cache.json

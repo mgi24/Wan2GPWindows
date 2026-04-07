@@ -354,7 +354,12 @@ def install_logic(env_name, env_type, env_path, py_k, torch_k, triton_k, sage_k,
 
     if flash_k: 
         cmd = resolve_cmd(config['components']['flash'][flash_k]['cmd'])
-        if cmd: run_cmd(f"{pip} {cmd}")
+        if cmd:
+            cmd = cmd.strip()
+            if (not IS_WIN) and cmd.startswith("flash-attn"):
+                run_cmd(f"{pip} --no-build-isolation {cmd}")
+            else:
+                run_cmd(f"{pip} {cmd}")
         
     for k in kernel_list:
         if k in config['components']['kernels']:
