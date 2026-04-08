@@ -1,64 +1,77 @@
 #!/bin/bash
 
-set -e  # stop kalau ada error
+set -e  # stop on error
 
 echo "=== CHECK ROOT ==="
 if [ "$EUID" -ne 0 ]; then
-  echo "Harus dijalankan sebagai root!"
+  echo "This script must be run as root!"
   exit 1
 fi
 
 echo "=== UPDATE APT ==="
 apt update
 
-echo "=== INSTALL DEPENDENCY DASAR ==="
-apt install -y software-properties-common wget ca-certificates build-essential
-apt install -y --no-install-recommends libgl1 libglx-mesa0 libegl1 libglib2.0-0
+echo "=== INSTALL BASIC DEPENDENCIES ==="
+if dpkg -l software-properties-common wget ca-certificates build-essential 2>/dev/null | grep -q "^ii"; then
+  echo "Basic dependencies already installed, skipping."
+else
+  apt install -y software-properties-common wget ca-certificates build-essential
+fi
+
+if dpkg -l libgl1 libglx-mesa0 libegl1 libglib2.0-0 2>/dev/null | grep -q "^ii"; then
+  echo "Graphics libraries already installed, skipping."
+else
+  apt install -y --no-install-recommends libgl1 libglx-mesa0 libegl1 libglib2.0-0
+fi
+
 ldconfig
 ldconfig -p | grep -E 'libGL\.so\.1|libGLX\.so|libEGL\.so'
 ls -l /usr/lib/x86_64-linux-gnu/libGL.so.1*
 update-ca-certificates
 
-sudo mkdir -p --mode=0755 /usr/share/keyrings
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
-sudo apt-get update && sudo apt-get install cloudflared
+if command -v cloudflared &>/dev/null; then
+  echo "Cloudflared already installed, skipping."
+else
+  mkdir -p --mode=0755 /usr/share/keyrings
+  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+  echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main' | tee /etc/apt/sources.list.d/cloudflared.list
+  apt-get update && apt-get install -y cloudflared
+fi
 
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin
-sudo mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
-dpkg -i cuda-repo-ubuntu2204-13-2-local_13.2.0-595.45.04-1_amd64.deb
-cp /var/cuda-repo-ubuntu2204-13-2-local/cuda-*-keyring.gpg /usr/share/keyrings/
-apt update
-apt install -y cuda-toolkit-13-2
+echo "=== SKIP CUDA 13.2 INSTALL (CUDA 12.6 already installed for RTX 3090) ==="
+echo "Verifying existing CUDA installation..."
+nvcc --version || echo "WARNING: nvcc not found"
 
-export CUDA_HOME=/usr/local/cuda-13.2
-export PATH=$CUDA_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+if [ -d /root/miniconda3 ] && command -v /root/miniconda3/bin/conda &>/dev/null; then
+  echo "Miniconda already installed at /root/miniconda3, skipping."
+else
+  echo "=== DOWNLOAD MINICONDA ==="
+  wget https://repo.anaconda.com/miniconda/Miniconda3-py313_26.1.1-1-Linux-x86_64.sh -O miniconda.sh
 
-nvcc --version
-
-echo "=== DOWNLOAD MINICONDA ==="
-wget https://repo.anaconda.com/miniconda/Miniconda3-py313_26.1.1-1-Linux-x86_64.sh -O miniconda.sh
-
-echo "=== INSTALL MINICONDA ==="
-bash miniconda.sh -b -p /root/miniconda3
+  echo "=== INSTALL MINICONDA ==="
+  bash miniconda.sh -b -p /root/miniconda3
+fi
 
 echo "=== LOAD CONDA ==="
 source /root/miniconda3/etc/profile.d/conda.sh
 
-echo "=== ACCEPT TOS ANACONDA ==="
+echo "=== ACCEPT ANACONDA TOS ==="
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-echo "=== ADD DEADSNAKES PPA ==="
-add-apt-repository -y ppa:deadsnakes/ppa
+if dpkg -l python3.11 python3.11-venv python3.11-dev 2>/dev/null | grep -q "^ii"; then
+  echo "Python 3.11 already installed, skipping."
+else
+  echo "=== ADD DEADSNAKES PPA ==="
+  add-apt-repository -y ppa:deadsnakes/ppa
 
-echo "=== UPDATE APT (SETELAH PPA) ==="
-apt update
+  echo "=== UPDATE APT (AFTER PPA) ==="
+  apt update
 
-echo "=== INSTALL PYTHON 3.11 ==="
-apt install -y python3.11 python3.11-venv python3.11-dev
+  echo "=== INSTALL PYTHON 3.11 ==="
+  apt install -y python3.11 python3.11-venv python3.11-dev
+fi
 
 echo "=== DONE ==="
-echo "Coba cek: conda --version && python3.11 --version"
+echo "Verification: conda --version && python3.11 --version"
 

@@ -304,10 +304,10 @@ def show_status():
     print(f" * = Active Environment")
     print("="*95 + "\n")
 
-def install_logic(env_name, env_type, env_path, py_k, torch_k, triton_k, sage_k, flash_k, kernel_list, config):
+def install_logic(env_name, env_type, env_path, py_k, torch_k, triton_k, sage_k, flash_k, kernel_list, config, skip_create=False):
     template = ENV_TEMPLATES[env_type]
     target_py_ver = config['components']['python'][py_k]['ver']
-    
+
     print(f"\n[1/3] Preparing Environment: {env_name} ({env_type})...")
 
     if env_type != "none":
@@ -325,7 +325,7 @@ def install_logic(env_name, env_type, env_path, py_k, torch_k, triton_k, sage_k,
                 sys_py=sys.executable
             )
 
-    if create_cmd:
+    if create_cmd and not skip_create:
         run_cmd(create_cmd)
 
     pip = template["install"].format(dir=env_path)
@@ -394,20 +394,30 @@ def do_install_interactive(env_type, config, detected_key):
         choice = input("Do you want to overwrite it? (This will delete the old folder) [y/N]: ").lower()
         if choice != 'y': return
         manager.remove_env(name)
+        reuse_existing = False
     elif os.path.exists(path) and env_type != "none":
         print(f"\n[!] Warning: Directory '{path}' exists but is not registered.")
-        choice = input("Do you want to overwrite this directory? [y/N]: ").lower()
-        if choice != 'y': return
-        try: shutil.rmtree(path)
-        except: pass
+        choice = input("Do you want to reuse this existing directory? [Y/n]: ").lower()
+        reuse_existing = False
+        if choice == 'n':
+            choice2 = input("Do you want to overwrite this directory? (This will delete it) [y/N]: ").lower()
+            if choice2 == 'y':
+                try: shutil.rmtree(path)
+                except: pass
+            else:
+                return
+        else:
+            reuse_existing = True
+    else:
+        reuse_existing = False
 
     print("\n--- Select Install Mode ---")
     print("1. Autoselect (Recommended - Based on your card)")
     print("2. Manual Selection (Custom versions)")
     print("3. Use Latest (Forces RTX 50 Profile)")
-    
+
     mode = input("Select option (1-3) [Default: 1]: ").strip()
-    
+
     if mode == "2":
         base = config['gpu_profiles'][detected_key]
         py_k = menu("Python Version", config['components']['python'], base['python'])
@@ -416,15 +426,15 @@ def do_install_interactive(env_type, config, detected_key):
         sage_k = menu("Sage Attention", config['components']['sage'], base['sage'])
         flash_k = menu("Flash Attention", config['components']['flash'], base['flash'])
         kernels = base['kernels']
-        
-        install_logic(name, env_type, path, py_k, torch_k, triton_k, sage_k, flash_k, kernels, config)
-        
+
+        install_logic(name, env_type, path, py_k, torch_k, triton_k, sage_k, flash_k, kernels, config, skip_create=reuse_existing)
+
     elif mode == "3":
         p = config['gpu_profiles']['RTX_50']
-        install_logic(name, env_type, path, p['python'], p['torch'], p['triton'], p['sage'], p.get('flash'), p['kernels'], config)
+        install_logic(name, env_type, path, p['python'], p['torch'], p['triton'], p['sage'], p.get('flash'), p['kernels'], config, skip_create=reuse_existing)
     else:
         p = config['gpu_profiles'][detected_key]
-        install_logic(name, env_type, path, p['python'], p['torch'], p['triton'], p['sage'], p.get('flash'), p['kernels'], config)
+        install_logic(name, env_type, path, p['python'], p['torch'], p['triton'], p['sage'], p.get('flash'), p['kernels'], config, skip_create=reuse_existing)
 
     manager.add_env(name, env_type, path)
     
