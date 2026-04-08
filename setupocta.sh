@@ -10,13 +10,8 @@ fi
 
 echo "=== UPDATE APT ==="
 apt update
+apt install -y software-properties-common wget ca-certificates build-essential
 
-echo "=== INSTALL BASIC DEPENDENCIES ==="
-if dpkg -l software-properties-common wget ca-certificates build-essential 2>/dev/null | grep -q "^ii"; then
-  echo "Basic dependencies already installed, skipping."
-else
-  apt install -y software-properties-common wget ca-certificates build-essential
-fi
 
 if dpkg -l libgl1 libglx-mesa0 libegl1 libglib2.0-0 2>/dev/null | grep -q "^ii"; then
   echo "Graphics libraries already installed, skipping."
@@ -24,9 +19,11 @@ else
   apt install -y --no-install-recommends libgl1 libglx-mesa0 libegl1 libglib2.0-0
 fi
 
-ldconfig
-ldconfig -p | grep -E 'libGL\.so\.1|libGLX\.so|libEGL\.so'
-ls -l /usr/lib/x86_64-linux-gnu/libGL.so.1*
+ldconfig -p | grep -E 'libGL\.so\.1|libGLX\.so|libEGL\.so' \
+  || echo "NOTE: libGL/libGLX/libEGL not found in ldconfig cache (yet)"
+
+ls -l /usr/lib/x86_64-linux-gnu/libGL.so.1* \
+  || echo "NOTE: /usr/lib/x86_64-linux-gnu/libGL.so.1* not present"
 update-ca-certificates
 
 if command -v cloudflared &>/dev/null; then
@@ -38,9 +35,19 @@ else
   apt-get update && apt-get install -y cloudflared
 fi
 
-echo "=== SKIP CUDA 13.2 INSTALL (CUDA 12.6 already installed for RTX 3090) ==="
-echo "Verifying existing CUDA installation..."
+
+echo "INSTALLING CUDA TOOLKITS"
+
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda-repo-ubuntu2004-12-6-local_12.6.0-560.28.03-1_amd64.deb
+dpkg -i cuda-repo-ubuntu2004-12-6-local_12.6.0-560.28.03-1_amd64.deb
+cp /var/cuda-repo-ubuntu2004-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/
+apt-get update
+apt-get -y install cuda-toolkit-12-6
+
 nvcc --version || echo "WARNING: nvcc not found"
+
 
 if [ -d /root/miniconda3 ] && command -v /root/miniconda3/bin/conda &>/dev/null; then
   echo "Miniconda already installed at /root/miniconda3, skipping."
